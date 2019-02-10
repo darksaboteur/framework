@@ -330,6 +330,51 @@ class SqlServerGrammar extends Grammar
     }
 
     /**
+     * Compile an insert statement into SQL.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  array  $values
+     * @param  string  $sequence
+     * @return string
+     */
+    public function compileInsertGetId(Builder $query, array $values, $sequence)
+    {
+        if (! $sequence) {
+          return $this->compileInsert($query, $values);
+        }
+
+        // Essentially we will force every insert to be treated as a batch insert which
+        // simply makes creating the SQL easier for us since we can utilize the same
+        // basic routine regardless of an amount of records given to us to insert.
+        $table = $this->wrapTable($query->from);
+
+        if (! is_array(reset($values))) {
+            $values = [$values];
+        }
+
+        $columns = $this->columnize(array_keys(reset($values)));
+
+        // We need to build a list of parameter place-holders of values that are bound
+        // to the query. Each insert should have the exact same amount of parameter
+        // bindings so we will loop through the record and parameterize them all.
+        $parameters = collect($values)->map(function ($record) {
+            return '('.$this->parameterize($record).')';
+        })->implode(', ');
+
+        // This ensures we get the inserted id with triggers or replicated environments
+        // "When SET NOCOUNT is ON, the count (indicating the number of rows affected
+        // by a Transact-SQL statement) is not returned"
+        // By using NOCOUNT ON we don't have to skip this rowset
+        return "SET NOCOUNT ON;
+                DECLARE @inserted table (Id int);
+                insert into $table ($columns)
+                  OUTPUT INSERTED.$sequence
+                  INTO @inserted
+                values $parameters;
+                SELECT * FROM @inserted";
+    }
+
+    /**
      * Compile a truncate table statement into SQL.
      *
      * @param  \Illuminate\Database\Query\Builder  $query

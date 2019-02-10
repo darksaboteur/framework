@@ -21,10 +21,10 @@ class SqlServerProcessor extends Processor
     {
         $connection = $query->getConnection();
 
-        $connection->insert($sql, $values);
+        $statement = $connection->insert($sql, $values);
 
         if ($connection->getConfig('odbc') === true) {
-            $id = $this->processInsertGetIdForOdbc($connection);
+            $id = $this->processInsertGetIdForOdbc($statement);
         } else {
             $id = $connection->getPdo()->lastInsertId();
         }
@@ -40,19 +40,24 @@ class SqlServerProcessor extends Processor
      *
      * @throws \Exception
      */
-    protected function processInsertGetIdForOdbc(Connection $connection)
+    protected function processInsertGetIdForOdbc($statement)
     {
-        $result = $connection->selectFromWriteConnection(
-            'SELECT CAST(COALESCE(SCOPE_IDENTITY(), @@IDENTITY) AS int) AS insertid'
-        );
+      $id = null;
 
-        if (! $result) {
-            throw new Exception('Unable to retrieve lastInsertID for ODBC.');
+      if ($statement) {
+        // loop through the rowsets until we get the id, although in most cases
+        // it should be in the first one
+        do {
+          $id = $statement->fetchColumn();
         }
+        while (!$id && $statement->nextRowset());
+      }
 
-        $row = $result[0];
+      if (! $id) {
+        throw new Exception('Unable to retrieve last inserted ID for ODBC.');
+      }
 
-        return is_object($row) ? $row->insertid : $row['insertid'];
+      return $id;
     }
 
     /**

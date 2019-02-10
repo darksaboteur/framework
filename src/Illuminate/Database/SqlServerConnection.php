@@ -58,6 +58,32 @@ class SqlServerConnection extends Connection
     }
 
     /**
+     * Execute an SQL statement and return the the pdo statement or false.
+     *
+     * @param  string  $query
+     * @param  array   $bindings
+     * @return \PDOStatement|bool
+     */
+    public function statement($query, $bindings = [])
+    {
+        return $this->run($query, $bindings, function ($query, $bindings) {
+          if ($this->pretending()) {
+              return true;
+          }
+
+          $statement = $this->getPdo()->prepare($query);
+
+          $this->bindValues($statement, $this->prepareBindings($bindings));
+
+          $this->recordsHaveBeenModified();
+
+          $result = $statement->execute();
+
+          return ($result ? $statement : false);
+        });
+    }
+
+    /**
      * Get the default query grammar instance.
      *
      * @return \Illuminate\Database\Query\Grammars\SqlServerGrammar
